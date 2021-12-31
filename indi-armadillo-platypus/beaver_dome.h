@@ -41,12 +41,12 @@ class Beaver : public INDI::Dome
 
     protected:
         bool Handshake() override;
-        void TimerHit() override;
+        virtual void TimerHit() override;
 
         // Rotator
         virtual IPState MoveAbs(double az) override;
         virtual IPState MoveRel(double azDiff) override;
-        virtual bool Sync(double az) override;
+        virtual IPState Move(DomeDirection dir, DomeMotionCommand operation) override;
 
         // Shutter
         virtual IPState ControlShutter(ShutterOperation operation) override;
@@ -57,32 +57,26 @@ class Beaver : public INDI::Dome
         // Config
         virtual bool saveConfigItems(FILE * fp) override;
 
-        // Parking
-        virtual IPState Park() override;
-        virtual IPState UnPark() override;
+        // Parking  (handled in code here so as to place on correct tab
+        //virtual IPState Park() override;
+        //virtual IPState UnPark() override;
 
-        // Beaver dome status
+        // Beaver status
         enum
         {
-            DOME_STATUS_IDLE,
-            DOME_STATUS_ROTATOR_MOVING,
-            DOME_STATUS_SHUTTER_MOVING,
-            DOME_STATUS_BOTH_MOVING,
-            DOME_STATUS_ROTATOR_ERROR = 4,
-            DOME_STATUS_SHUTTER_ERROR = 8,
-            DOME_STATUS_SHUTTER_COMM = 16,
-            DOME_STATUS_UNSAFE_CW = 32,
-            DOME_STATUS_UNSAFE_RG = 64,
-        };
-
-        // Beaver shutter status
-        enum
-        {
-            SHUTTER_STATUS_OPENED,
-            SHUTTER_STATUS_CLOSED,
-            SHUTTER_STATUS_OPENING,
-            SHUTTER_STATUS_CLOSING,
-            SHUTTER_STATUS_ERROR,
+            DOME_STATUS_ROTATOR_MOVING = 0x0001,
+            DOME_STATUS_SHUTTER_MOVING = 0x0002,
+            DOME_STATUS_ROTATOR_ERROR = 0x0004,
+            DOME_STATUS_SHUTTER_ERROR = 0x0008,
+            DOME_STATUS_SHUTTER_COMM = 0x0010,
+            DOME_STATUS_UNSAFE_CW = 0x0020,
+            DOME_STATUS_UNSAFE_RG = 0x0040,
+            DOME_STATUS_SHUTTER_OPENED = 0x0080,
+            DOME_STATUS_SHUTTER_CLOSED = 0x0100,
+            DOME_STATUS_SHUTTER_OPENING = 0x0200,
+            DOME_STATUS_SHUTTER_CLOSING = 0x0400,
+            DOME_STATUS_ROTATOR_HOME = 0x0800,
+            DOME_STATUS_ROTATOR_PARKED = 0x1000
         };
 
     private:
@@ -97,45 +91,76 @@ class Beaver : public INDI::Dome
         ///////////////////////////////////////////////////////////////////////////////
         bool rotatorGotoAz(double az);
         bool rotatorGetAz();
-        bool rotatorSyncAZ(double az);
+        //bool rotatorSyncAZ(double az);
+        bool rotatorSetHome(double az);
+        bool rotatorSetPark(double az);
         bool rotatorGotoPark();
         bool rotatorGotoHome();
         bool rotatorMeasureHome();
         bool rotatorFindHome();
-        bool rotatorIsHome();
-        bool rotatorIsParked();
-        bool rotatorGetStatus();
+        //bool rotatorIsHome();
+        //bool rotatorIsParked();
+        bool rotatorUnPark();
+        bool rotatorSetPark();
         bool abortAll();
+
+        bool rotatorGetSettings();
+        bool rotatorSetSettings(double maxSpeed, double minSpeed, double acceleration, double timeout);
 
         ///////////////////////////////////////////////////////////////////////////////
         /// Shutter Motion Control
         ///////////////////////////////////////////////////////////////////////////////
-        bool shutterSetSettings(uint32_t maxSpeed, uint32_t minSpeed, uint32_t acceleration, uint32_t timeout, uint32_t voltage);
+        bool shutterSetSettings(double maxSpeed, double minSpeed, double acceleration, double voltage);
         bool shutterGetSettings();
         bool shutterFindHome();
         bool shutterAbort();
-        bool shutterGetStatus();
-        bool shutterIsUp();
+        bool shutterOnLine();
 
         ///////////////////////////////////////////////////////////////////////////////
         /// Communication Functions
         ///////////////////////////////////////////////////////////////////////////////
         bool sendCommand(const char * cmd, double &res);
+        bool sendRawCommand(const char * cmd, char *resString);
+        bool getDomeStatus(uint16_t &domeStatus);
+        //bool issueHdwrCmd(const char * cmd, const char * response);
         void hexDump(char * buf, const char * data, int size);
         std::vector<std::string> split(const std::string &input, const std::string &regex);
 
         ///////////////////////////////////////////////////////////////////////////////
         /// Properties
         ///////////////////////////////////////////////////////////////////////////////
-        // Firmware Version
+        // Beaver Firmware Version
         INDI::PropertyText FirmwareVersionTP {1};
+        // Rotator Factory reset
+        INDI::PropertySwitch RFactoryResetSP {1};
+        // Shutter Factory reset
+        INDI::PropertySwitch SFactoryResetSP {1};
+        // Home offset from north
+        INDI::PropertyNumber HomePositionNP {1};
+        // Goto Home
+        INDI::PropertySwitch GotoHomeSP {1};
+        // Park position in az
+        INDI::PropertyNumber ParkPositionNP {1};
+        // Set Park position to current
+        INDI::PropertySwitch ParkPosition2CurrentSP {1};
+        // Shutter voltage
+        INDI::PropertyNumber ShutterVoltsNP {1};
+        // Rotator Status        
+        INDI::PropertyText RotatorStatusTP {1};
+        // Shutter Status
+        INDI::PropertyText ShutterStatusTP {1};
         // Rotator Calibration
-        INDI::PropertySwitch RotatorCalibrationSP {3};
+        INDI::PropertySwitch RotatorCalibrationSP {2};
         enum
         {
             ROTATOR_HOME_FIND,
-            ROTATOR_HOME_MEASURE,
-            ROTATOR_HOME_GOTO
+            ROTATOR_HOME_MEASURE
+        };
+        INDI::PropertySwitch RotatorParkSP {2};
+        enum
+        {
+            ROTATOR_PARK,
+            ROTATOR_UNPARK
         };
         // Shutter Calibration
         INDI::PropertySwitch ShutterCalibrationSP {1};
@@ -144,16 +169,23 @@ class Beaver : public INDI::Dome
             SHUTTER_HOME_FIND
         };
         // Shutter Configuration
-        INDI::PropertyNumber ShutterSettingsNP {5};
+        INDI::PropertyNumber ShutterSettingsNP {4};
         enum
         {
             SHUTTER_MAX_SPEED,
             SHUTTER_MIN_SPEED,
             SHUTTER_ACCELERATION,
-            SHUTTER_TIMEOUT,
             SHUTTER_SAFE_VOLTAGE
         };
-
+        // Rotator Configuration
+        INDI::PropertyNumber RotatorSettingsNP {4};
+        enum
+        {
+            ROTATOR_MAX_SPEED,
+            ROTATOR_MIN_SPEED,
+            ROTATOR_ACCELERATION,
+            ROTATOR_TIMEOUT
+        };
 
         ///////////////////////////////////////////////////////////////////////
         /// Private Variables
@@ -171,4 +203,8 @@ class Beaver : public INDI::Dome
         static constexpr const uint8_t DRIVER_TIMEOUT {3};
         // Maximum buffer for sending/receving.
         static constexpr const uint8_t DRIVER_LEN {128};
+        int domeDir = 1;
+        double lastAzDiff = 1;
+        bool hasInited = false;
+
 };
